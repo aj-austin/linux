@@ -43,7 +43,10 @@
 	 (__u64)1 << _UFFDIO_TLBFLUSH | \
    (__u64)1 << _UFFDIO_CR3      | \
    (__u64)1 << _UFFDIO_GET_FLAG | \
-   (__u64)1 << _UFFDIO_CLEAR_FLAG)
+   (__u64)1 << _UFFDIO_CLEAR_FLAG | \
+   (__u64)1 << _UFFDIO_DMA_COPY | \
+   (__u64)1 << _UFFDIO_DMA_REQUEST_CHANNS | \
+   (__u64)1 << _UFFDIO_DMA_RELEASE_CHANNS)
 
 /*
  * Valid ioctl command number range with this API is from 0x00 to
@@ -64,6 +67,10 @@
 #define _UFFDIO_CR3        (0x0a)
 #define _UFFDIO_GET_FLAG  (0x0b)
 #define _UFFDIO_CLEAR_FLAG  (0x0c)
+#define _UFFDIO_DMA_COPY  (0x0d)
+#define _UFFDIO_DMA_REQUEST_CHANNS  (0x0e)
+#define _UFFDIO_DMA_RELEASE_CHANNS  (0x0f)
+
 
 /* userfaultfd ioctl ids */
 #define UFFDIO 0xAA
@@ -89,6 +96,12 @@
               struct uffdio_page_flags)
 #define UFFDIO_CLEAR_FLAG   _IOWR(UFFDIO, _UFFDIO_CLEAR_FLAG, \
               struct uffdio_page_flags)
+#define UFFDIO_DMA_COPY		_IOWR(UFFDIO, _UFFDIO_DMA_COPY,	\
+				      struct uffdio_dma_copy)
+#define UFFDIO_DMA_REQUEST_CHANNS		_IOWR(UFFDIO, _UFFDIO_DMA_REQUEST_CHANNS,	\
+				      struct uffdio_dma_channs)
+#define UFFDIO_DMA_RELEASE_CHANNS		_IOWR(UFFDIO, _UFFDIO_DMA_RELEASE_CHANNS, \
+                       struct uffdio_dma_channs)
 
 /* read() structure */
 struct uffd_msg {
@@ -284,6 +297,35 @@ struct uffdio_page_flags {
   __u64 flag2;  // the second flag of interest
   __u64 res1;   // result of operation (flag1 value if get, success/fail if set)
   __u64 res2;   // result of operation (flag2 value)
+};
+
+#define DMA_BATCH 32
+#define MAX_DMA_CHANS 16
+//#define DEBUG_TM
+struct uffdio_dma_copy {
+    __u64 dst[DMA_BATCH];
+    __u64 src[DMA_BATCH];
+    __u64 len[DMA_BATCH];
+    __u64 count;
+
+    /*
+     * There will be a wrprotection flag later that allows to map
+     * pages wrprotected on the fly. And such a flag will be
+     * available if the wrprotection ioctl are implemented for the
+     * range according to the uffdio_register.ioctls.
+     */
+#define UFFDIO_COPY_MODE_DONTWAKE       ((__u64)1<<0)
+    __u64 mode;
+
+    /*
+     * "copy" is written by the ioctl and must be at the end: the
+     * copy_from_user will not read the last 8 bytes.
+     */
+    __s64 copy;
+};
+
+struct uffdio_dma_channs {
+    __u16 num_channs;
 };
 
 #endif /* _LINUX_USERFAULTFD_H */

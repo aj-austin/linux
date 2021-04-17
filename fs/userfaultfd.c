@@ -30,6 +30,8 @@
 #include <linux/security.h>
 #include <linux/hugetlb.h>
 
+//#define NO_OPT
+
 static struct kmem_cache *userfaultfd_ctx_cachep __read_mostly;
 
 enum userfaultfd_state {
@@ -2142,6 +2144,115 @@ bad:
   return -1;
 }
 
+static int userfaultfd_dma_copy(struct userfaultfd_ctx *ctx,
+                    unsigned long arg)
+{
+    __s64 ret;
+    struct uffdio_dma_copy uffdio_dma_copy;
+    struct uffdio_dma_copy __user *user_uffdio_dma_copy;
+    struct userfaultfd_wake_range range;
+    int index;
+    u64 expected_len = 0;
+
+    u64 start_ioctl, end_ioctl;
+    u64 start_copy, end_copy;
+    #ifdef DEBUG_TM
+    start_ioctl = rdtsc();
+    #endif
+
+    user_uffdio_dma_copy = (struct uffdio_dma_copy __user *) arg;
+  
+    #ifdef NO_OPT  
+    ret = -EAGAIN;
+    if (READ_ONCE(ctx->mmap_changing))
+        goto out;
+    #endif
+
+    #ifdef DEBUG_TM
+    start_copy = rdtsc();
+    #endif
+    ret = -EFAULT;
+    if (copy_from_user(&uffdio_dma_copy, user_uffdio_dma_copy,
+               /* don't copy "copy" last field */
+	       sizeof(uffdio_dma_copy)-sizeof(__s64)))
+        goto out;
+    #ifdef DEBUG_TM
+    end_copy = rdtsc();
+    #endif
+
+    u64 count = uffdio_dma_copy.count;
+ 
+    #ifdef NO_OPT 
+    for (index = 0; index < count; index++)  {
+        ret = validate_range(ctx->mm, uffdio_dma_copy.dst[index], uffdio_dma_copy.len[index]);
+        if (ret)
+            goto out;
+	    expected_len += uffdio_dma_copy.len[index];
+    }
+    #endif
+
+    /*
+     * double check for wraparound just in case. copy_from_user()
+     * will later check uffdio_copy.src + uffdio_copy.len to fit
+     * in the userland range.
+     */
+    ret = -EINVAL;
+    if (mmget_not_zero(ctx->mm)) {
+        ret = dma_mcopy_pages(ctx->mm, &uffdio_dma_copy, &ctx->mmap_changing);
+        mmput(ctx->mm);
+    } else {
+        return -ESRCH;
+    }
+    if (unlikely(put_user(ret, &user_uffdio_dma_copy->copy)))
+        return -EFAULT;
+    if (ret < 0)
+        goto out;
+    BUG_ON(!ret);
+    /* len == 0 would wake all */
+    range.len = ret;
+
+    #if 0
+    if (!(uffdio_dma_copy.mode & UFFDIO_COPY_MODE_DONTWAKE)) {
+        range.start = uffdio_dma_copy.dst;
+        wake_userfault(ctx, &range);
+    }
+    #endif
+
+    ret = 0;
+    #ifdef NO_OPT
+    ret = ((range.len == expected_len) ? 0 : -EAGAIN);
+    #endif
+out:
+    #ifdef DEBUG_TM
+    end_ioctl = rdtsc();
+    //printk("userfaultfd_dma_ioctl:%llu, user-kernel copy:%llu\n", end_ioctl - start_ioctl, end_copy - start_copy);
+    printk("userfaultfd_dma_ioctl:%llu\n", end_ioctl - start_ioctl);
+    #endif
+    return ret;
+}
+
+// The design is only hemem case. Only one application can request/repsonse/use channels. Not consider concurrency and No lock for protection
+static int userfaultfd_dma_request_channs(struct userfaultfd_ctx *ctx,
+                     unsigned long arg)
+{
+    struct uffdio_dma_channs uffdio_dma_channs;
+    struct uffdio_dma_channs __user *user_uffdio_dma_channs;
+
+    user_uffdio_dma_channs = (struct uffdio_dma_channs __user *)arg;
+    if (copy_from_user(&uffdio_dma_channs, user_uffdio_dma_channs, sizeof(uffdio_dma_channs))) {
+        printk("fs/userfaultfd.c: userfaultfd_dma_request_channs: copy_from_user failed\n");
+        return -1;
+    }
+
+    return dma_request_channs(&uffdio_dma_channs);
+}
+
+static int userfaultfd_dma_release_channs(struct userfaultfd_ctx *ctx,
+                     unsigned long arg)
+{
+    return dma_release_channs();
+}
+
 static inline unsigned int uffd_ctx_features(__u64 user_features)
 {
 	/*
@@ -2234,6 +2345,15 @@ static long userfaultfd_ioctl(struct file *file, unsigned cmd,
   case UFFDIO_CLEAR_FLAG:
     ret = userfaultfd_clear_flag(ctx, arg);
     break;
+    case UFFDIO_DMA_COPY:
+		ret = userfaultfd_dma_copy(ctx, arg);
+		break;
+    case UFFDIO_DMA_REQUEST_CHANNS:
+        ret = userfaultfd_dma_request_channs(ctx, arg);
+        break;
+    case UFFDIO_DMA_RELEASE_CHANNS:
+        ret = userfaultfd_dma_release_channs(ctx, arg);
+        break;
 	}
 	return ret;
 }

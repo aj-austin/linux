@@ -906,6 +906,99 @@ static int get_dma_id(struct dma_device *device)
 	return 0;
 }
 
+static int __dma_async_device_channel_register(struct dma_device *device,
+					       struct dma_chan *chan)
+{
+	int rc;
+
+	chan->local = alloc_percpu(typeof(*chan->local));
+	if (!chan->local)
+		return -ENOMEM;
+	chan->dev = kzalloc(sizeof(*chan->dev), GFP_KERNEL);
+	if (!chan->dev) {
+		rc = -ENOMEM;
+		goto err_free_local;
+	}
+
+	/*
+	 * When the chan_id is a negative value, we are dynamically adding
+	 * the channel. Otherwise we are static enumerating.
+	 */
+	mutex_lock(&device->chan_mutex);
+	chan->chan_id = ida_alloc(&device->chan_ida, GFP_KERNEL);
+	mutex_unlock(&device->chan_mutex);
+	if (chan->chan_id < 0) {
+		pr_err("%s: unable to alloc ida for chan: %d\n",
+		       __func__, chan->chan_id);
+		rc = chan->chan_id;
+		goto err_free_dev;
+	}
+
+	chan->dev->device.class = &dma_devclass;
+	chan->dev->device.parent = device->dev;
+	chan->dev->chan = chan;
+	chan->dev->dev_id = device->dev_id;
+	dev_set_name(&chan->dev->device, "dma%dchan%d",
+		     device->dev_id, chan->chan_id);
+	rc = device_register(&chan->dev->device);
+	if (rc)
+		goto err_out_ida;
+	chan->client_count = 0;
+	device->chancnt++;
+
+	return 0;
+
+ err_out_ida:
+	mutex_lock(&device->chan_mutex);
+	ida_free(&device->chan_ida, chan->chan_id);
+	mutex_unlock(&device->chan_mutex);
+ err_free_dev:
+	kfree(chan->dev);
+ err_free_local:
+	free_percpu(chan->local);
+	chan->local = NULL;
+	return rc;
+}
+
+int dma_async_device_channel_register(struct dma_device *device,
+				      struct dma_chan *chan)
+{
+	int rc;
+
+	rc = __dma_async_device_channel_register(device, chan);
+	if (rc < 0)
+		return rc;
+
+	dma_channel_rebalance();
+	return 0;
+}
+EXPORT_SYMBOL_GPL(dma_async_device_channel_register);
+
+static void __dma_async_device_channel_unregister(struct dma_device *device,
+						  struct dma_chan *chan)
+{
+	WARN_ONCE(!device->device_release && chan->client_count,
+		  "%s called while %d clients hold a reference\n",
+		  __func__, chan->client_count);
+	mutex_lock(&dma_list_mutex);
+	device->chancnt--;
+	chan->dev->chan = NULL;
+	mutex_unlock(&dma_list_mutex);
+	mutex_lock(&device->chan_mutex);
+	ida_free(&device->chan_ida, chan->chan_id);
+	mutex_unlock(&device->chan_mutex);
+	device_unregister(&chan->dev->device);
+	free_percpu(chan->local);
+}
+
+void dma_async_device_channel_unregister(struct dma_device *device,
+					 struct dma_chan *chan)
+{
+	__dma_async_device_channel_unregister(device, chan);
+	dma_channel_rebalance();
+}
+EXPORT_SYMBOL_GPL(dma_async_device_channel_unregister);
+
 /**
  * dma_async_device_register - registers DMA devices found
  * @device: &dma_device
@@ -1014,6 +1107,9 @@ int dma_async_device_register(struct dma_device *device)
 		kfree(idr_ref);
 		return rc;
 	}
+
+    mutex_init(&device->chan_mutex);
+	ida_init(&device->chan_ida);
 
 	atomic_set(idr_ref, 0);
 

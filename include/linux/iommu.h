@@ -32,6 +32,9 @@
 #define IOMMU_NOEXEC	(1 << 3)
 #define IOMMU_MMIO	(1 << 4) /* e.g. things like MSI doorbells */
 
+#define IOMMU_NO_PASID	(0U) /* Reserved for DMA w/o PASID */
+#define IOMMU_FIRST_GLOBAL_PASID	(1U) /*starting range for allocation */
+#define IOMMU_PASID_INVALID	(-1U)
 typedef unsigned int ioasid_t;
 
 /*

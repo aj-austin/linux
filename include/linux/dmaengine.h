@@ -729,6 +729,10 @@ struct dma_filter {
  *	struct with auxiliary transfer status information, otherwise the call
  *	will just return a simple status code
  * @device_issue_pending: push pending transactions to hardware
+ * @device_release: called sometime atfer dma_async_device_unregister() is
+ *  called and there are no further references to this structure. This
+ *  must be implemented to free resources however many existing drivers
+ *  do not and are therefore not safe to unbind while in use.
  * @descriptor_reuse: a submitted transfer can be resubmitted after completion
  */
 struct dma_device {
@@ -814,6 +818,7 @@ struct dma_device {
 					    dma_cookie_t cookie,
 					    struct dma_tx_state *txstate);
 	void (*device_issue_pending)(struct dma_chan *chan);
+    void (*device_release)(struct dma_device *dev);
 };
 
 static inline int dmaengine_slave_config(struct dma_chan *chan,

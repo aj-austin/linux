@@ -162,6 +162,13 @@ struct iommu_resv_region {
 	enum iommu_resv_type	type;
 };
 
+/**
+ * struct iommu_sva - handle to a device-mm bond
+ */
+struct iommu_sva {
+	struct device			*dev;
+};
+
 #ifdef CONFIG_IOMMU_API
 
 /**
@@ -423,6 +430,12 @@ int iommu_probe_device(struct device *dev);
 void iommu_release_device(struct device *dev);
 
 ioasid_t iommu_alloc_global_pasid(struct device *dev);
+
+struct iommu_sva *iommu_sva_bind_device(struct device *dev,
+					struct mm_struct *mm,
+					void *drvdata);
+void iommu_sva_unbind_device(struct iommu_sva *handle);
+u32 iommu_sva_get_pasid(struct iommu_sva *handle);
 
 #else /* CONFIG_IOMMU_API */
 

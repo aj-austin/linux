@@ -33,7 +33,7 @@ void idxd_driver_unregister(struct idxd_device_driver *idxd_drv)
 EXPORT_SYMBOL_GPL(idxd_driver_unregister);
 
 static int idxd_config_bus_match(struct device *dev,
-				 const struct device_driver *drv)
+				 struct device_driver *drv)
 {
 	const struct idxd_device_driver *idxd_drv =
 		container_of_const(drv, struct idxd_device_driver, drv);
@@ -58,16 +58,18 @@ static int idxd_config_bus_probe(struct device *dev)
 	return idxd_drv->probe(idxd_dev);
 }
 
-static void idxd_config_bus_remove(struct device *dev)
+static int idxd_config_bus_remove(struct device *dev)
 {
 	struct idxd_device_driver *idxd_drv =
 		container_of(dev->driver, struct idxd_device_driver, drv);
 	struct idxd_dev *idxd_dev = confdev_to_idxd_dev(dev);
 
 	idxd_drv->remove(idxd_dev);
+
+    return 0;
 }
 
-static int idxd_bus_uevent(const struct device *dev, struct kobj_uevent_env *env)
+static int idxd_bus_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
 	return add_uevent_var(env, "MODALIAS=" IDXD_DEVICES_MODALIAS_FMT, 0);
 }

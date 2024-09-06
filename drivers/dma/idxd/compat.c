@@ -4,7 +4,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/device.h>
-#include <linux/device/bus.h>
+// #include <linux/device/bus.h>
 #include "idxd.h"
 
 extern int device_driver_attach(struct device_driver *drv, struct device *dev);

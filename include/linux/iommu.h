@@ -247,6 +247,27 @@ struct iommu_ops {
 };
 
 /**
+ * struct dev_iommu - Collection of per-device IOMMU data
+ *
+ * @fault_param: IOMMU detected device fault reporting data
+ * @iopf_param:	 I/O Page Fault queue and data
+ * @fwspec:	 IOMMU fwspec data
+ * @iommu_dev:	 IOMMU device this device is linked to
+ * @priv:	 IOMMU Driver private data
+ *
+ * TODO: migrate other per device data pointers under iommu_dev_data, e.g.
+ *	struct iommu_group	*iommu_group;
+ */
+struct dev_iommu {
+	struct mutex lock;
+	struct iommu_fault_param	*fault_param;
+	struct iopf_device_param	*iopf_param;
+	struct iommu_fwspec		*fwspec;
+	struct iommu_device		*iommu_dev;
+	void				*priv;
+};
+
+/**
  * struct iommu_device - IOMMU core representation of one IOMMU hardware
  *			 instance
  * @list: Used by the iommu-core to keep a list of registered iommus

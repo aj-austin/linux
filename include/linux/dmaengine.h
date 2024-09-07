@@ -45,12 +45,14 @@ static inline int dma_submit_error(dma_cookie_t cookie)
  * @DMA_IN_PROGRESS: transaction not yet processed
  * @DMA_PAUSED: transaction is paused
  * @DMA_ERROR: transaction failed
+ * @DMA_ERROR: transaction failed
  */
 enum dma_status {
 	DMA_COMPLETE,
 	DMA_IN_PROGRESS,
 	DMA_PAUSED,
 	DMA_ERROR,
+    DMA_OUT_OF_ORDER,
 };
 
 /**
